@@ -1,0 +1,11 @@
+1445092740303	Delete element
+1445092815760	Delete element
+1445092922714	Delete element
+1445093064119	Delete element
+1445094476333	Delete element
+1445103048069	Extract method 'init_freq_upd_spinner'
+1445110084857	Extract method 'checkGPSStatus'
+1445112346982	Rename field 'gpsStatus'
+1445112360785	Rename field 'networkStatus'
+1445112495891	Rename local variable 'gpsStatus'
+1445112503286	Rename local variable 'networkStatus'

@@ -1,0 +1,262 @@
+package com.gtracker;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.text.DateFormat;
+
+import org.apache.http.*;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.conn.scheme.PlainSocketFactory;
+import org.apache.http.conn.scheme.Scheme;
+import org.apache.http.conn.scheme.SchemeRegistry;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpParams;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.Date;
+
+import com.google.gson.FieldNamingPolicy;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.Bundle;
+import android.os.StrictMode;
+import android.util.Log;
+import android.view.View;
+import android.widget.AdapterView.OnItemSelectedListener;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.CompoundButton;
+import android.widget.CompoundButton.OnCheckedChangeListener;
+import android.widget.Spinner;
+import android.widget.Switch;
+import android.widget.TextView;
+//TBD: update time
+public class Main extends Activity {
+
+	private int selected_upd_index; //0 - is title
+	private boolean isTrackerEnabled=false;
+	TextView gpsProviderStatus = null;
+	TextView networkProviderStatus = null;
+	TextView networkStatus = null;
+	LocationManager locationManager = null;
+	LocationListener locationListener = null;
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		// TODO Auto-generated method stub
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.main);
+		this.selected_upd_index = 0;
+		init_freq_upd_spinner();
+		final TextView gpsProviderStatus = (TextView) findViewById(R.id.textViewGPSProviderStatus);
+		final TextView networkProviderStatus = (TextView) findViewById(R.id.textViewNetworkProviderStatus);
+		networkStatus = (TextView) findViewById(R.id.textViewNetStatus);
+		
+		Log.d("ME", "in onCreate()");
+		
+		locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+		
+		checkGPSStatus(gpsProviderStatus, networkProviderStatus, locationManager);
+		
+		//StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+
+		//StrictMode.setThreadPolicy(policy); 
+						 
+		locationListener = new LocationListener() {
+			
+			@Override
+			public void onStatusChanged(String provider, int status, Bundle extras) {
+				// TODO Auto-generated method stub
+				checkGPSStatus(gpsProviderStatus, networkProviderStatus, locationManager);
+				Log.d("ME", "GPS status changed");
+			}
+			
+			@Override
+			public void onProviderEnabled(String provider) {
+				// TODO Auto-generated method stub
+				TextView coordinates = (TextView) findViewById(R.id.textViewCoordinates);
+				coordinates.setText("Trying to locate your device...");
+				checkGPSStatus(gpsProviderStatus, networkProviderStatus, locationManager);
+				Log.d("ME", "GPS enabled");
+			}
+			
+			@Override
+			public void onProviderDisabled(String provider) {
+				// TODO Auto-generated method stub
+				checkGPSStatus(gpsProviderStatus, networkProviderStatus, locationManager);
+			}
+			
+			@Override
+			public void onLocationChanged(Location location) {
+				// TODO Auto-generated method stub
+				Log.d("ME", "On location changed");
+				if(isTrackerEnabled)
+				{
+					TextView coordinates = (TextView) findViewById(R.id.textViewCoordinates);
+					coordinates.setText(String.format("%f, %f", location.getLatitude(), location.getLongitude()));
+				}
+				
+				new TransmitCoordinatesTask().execute(location.getLatitude()+"", location.getLongitude()+"");
+			}
+		};
+		
+		Switch switchLocator = (Switch) findViewById(R.id.switchLocator);
+		switchLocator.setOnCheckedChangeListener(new OnCheckedChangeListener() {
+			
+			@Override
+			public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+				// TODO Auto-generated method stub
+				isTrackerEnabled = isChecked;
+				if(isTrackerEnabled)
+					turnOnLocation(locationListener);
+				else turnOffLocation(locationListener);
+				Log.d("ME", "tracker is "+isChecked);
+			}
+		});
+		
+	}
+	
+	private void showAlertDialog(String message)
+	{
+		AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
+				this);
+
+			// set title
+			alertDialogBuilder.setTitle("Error!");
+
+			// set dialog message
+			alertDialogBuilder
+				.setMessage(message)
+				.setCancelable(false)
+				.setPositiveButton("OK",new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog,int id) {
+						// if this button is clicked, close
+						// current activity
+						Main.this.finish();
+					}
+				  });
+
+				// create alert dialog
+				AlertDialog alertDialog = alertDialogBuilder.create();
+
+				// show it
+				alertDialog.show();
+	}
+	
+	private long getUpdateFrequencyMilliseconds()
+	{
+		ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this,
+		        R.array.upd_interval_array, android.R.layout.simple_spinner_item);
+		if(this.selected_upd_index>0)
+		{
+			String upd_freq_str = adapter.getItem(selected_upd_index).toString();
+			if(upd_freq_str.equals("1 sec."))
+			{
+				return 1000*1;
+			}
+			else if(upd_freq_str.equals("5 sec."))
+			{
+				return 1000*5;
+			}
+			else if(upd_freq_str.equals("10 sec."))
+			{
+				return 1000*10;
+			}
+			else if(upd_freq_str.equals("30 sec."))
+			{
+				return 1000*30;
+			}
+			else if(upd_freq_str.equals("1 min."))
+			{
+				return 1000*1*60;
+			}
+			else if(upd_freq_str.equals("5 min."))
+			{
+				return 1000*5*60;
+			}
+			else if(upd_freq_str.equals("10 min."))
+			{
+				return 1000*10*60;
+			}
+			else if(upd_freq_str.equals("25 min."))
+			{
+				return 1000*25*60;
+			}
+			else if(upd_freq_str.equals("30 min."))
+			{
+				return 1000*30*60;
+			}
+		}
+		return 0;
+	}
+	
+	private void turnOnLocation(LocationListener listener)
+	{
+		locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, getUpdateFrequencyMilliseconds(), 0, listener);
+		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, getUpdateFrequencyMilliseconds(), 0, listener);
+	}
+	
+	private void turnOffLocation(LocationListener listener)
+	{
+		locationManager.removeUpdates(listener);
+	}
+	
+	private void checkGPSStatus(TextView gpsStatus, TextView networkStatus,
+			final LocationManager manager) {
+		gpsStatus.setText(""+(manager.isProviderEnabled(LocationManager.GPS_PROVIDER)));
+		networkStatus.setText(""+manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER));
+	}
+	
+	private boolean checkInternetStatus()
+	{
+		ConnectivityManager cm =
+		        (ConnectivityManager)this.getSystemService(Context.CONNECTIVITY_SERVICE);
+		 
+		NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+		boolean isConnected = activeNetwork.isConnectedOrConnecting();
+		
+		return isConnected;
+	}
+
+	private void init_freq_upd_spinner() {
+		Spinner spinner = (Spinner) findViewById(R.id.upd_interval_spinner);
+		// Create an ArrayAdapter using the string array and a default spinner layout
+		ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this,
+		        R.array.upd_interval_array, android.R.layout.simple_spinner_item);
+		// Specify the layout to use when the list of choices appears
+		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+		// Apply the adapter to the spinner
+		spinner.setAdapter(adapter);
+		spinner.setOnItemSelectedListener(new OnItemSelectedListener() {
+			@Override
+			public void onItemSelected(AdapterView<?> parent, View view,
+					int position, long id) {
+				// TODO Auto-generated method stub
+				selected_upd_index = parent.getSelectedItemPosition();
+			}
+			
+			@Override
+			public void onNothingSelected(AdapterView<?> parent) {
+				// TODO Auto-generated method stub
+				selected_upd_index = 0;
+			}
+		});
+	}
+
+}

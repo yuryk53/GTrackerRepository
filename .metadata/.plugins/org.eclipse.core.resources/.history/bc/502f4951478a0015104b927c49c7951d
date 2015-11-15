@@ -1,0 +1,9 @@
+package com.gtracker;
+
+public class NetworkUtil {
+
+	public NetworkUtil() {
+		// TODO Auto-generated constructor stub
+	}
+
+}

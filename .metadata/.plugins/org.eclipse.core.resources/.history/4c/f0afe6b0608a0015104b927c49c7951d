@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+    <CheckBoxPreference android:summary="Saves to local DB." android:key='"saveLocationOffline"' android:title='"Save coordinates when offline"'/>
+    <ListPreference android:key='"updInterval"' android:entries="@array/upd_interval_array" android:title="Default update interval"/>
+    
+
+</PreferenceScreen>
